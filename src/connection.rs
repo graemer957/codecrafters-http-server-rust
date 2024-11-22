@@ -65,50 +65,48 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use mockall::*;
 
-    #[derive(Debug)]
-    struct MockConnection<'a> {
-        input: &'a [u8],
-        output: Vec<u8>,
-    }
-
-    impl<'a> std::io::Read for MockConnection<'a> {
-        fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
-            let bytes_written = buf.write(self.input)?;
-            Ok(bytes_written)
+    mock! {
+        #[derive(Debug)]
+        Connection {}
+        impl Read for Connection {
+            fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize>;
+        }
+        impl Write for Connection {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize>;
+            fn flush(&mut self) -> std::io::Result<()>;
+        }
+        impl Shutdownable for Connection {
+            fn shutdown(&self, _how: Shutdown) -> std::io::Result<()>;
         }
     }
 
-    impl<'a> std::io::Write for MockConnection<'a> {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.output = Vec::from(buf);
-            Ok(buf.len())
-        }
+    fn mock(input: &'static [u8], output: &'static [u8]) -> Result<()> {
+        let mut mock = MockConnection::new();
+        mock.expect_read().once().returning(|buf| {
+            buf[..input.len()].copy_from_slice(input);
+            Ok(input.len())
+        });
+        mock.expect_write()
+            .with(predicate::eq(output))
+            .once()
+            .returning(|buf| Ok(buf.len()));
+        mock.expect_shutdown().once().returning(|_| Ok(()));
 
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<'a> Shutdownable for MockConnection<'a> {
-        fn shutdown(&self, _how: Shutdown) -> std::io::Result<()> {
-            Ok(())
-        }
+        Connection::new(mock).process()
     }
 
     #[test]
-    fn it_works() {
-        let input = b"GET / HTTP/1.1\r\n\r\n";
-        let output = b"HTTP/1.1 200 OK\r\n\r\n";
+    fn get_known_request_target_returns_200() -> Result<()> {
+        mock(b"GET / HTTP/1.1\r\n\r\n", b"HTTP/1.1 200 OK\r\n\r\n")
+    }
 
-        let mock = MockConnection {
-            input,
-            output: vec![],
-        };
-        let mut connection = Connection::new(mock);
-        let result = connection.process();
-
-        assert!(result.is_ok());
-        assert_eq!(connection.stream.output, output);
+    #[test]
+    fn getting_invalid_request_target_returns_404() -> Result<()> {
+        mock(
+            b"GET /not_found HTTP/1.1\r\n\r\n",
+            b"HTTP/1.1 404 Not Found\r\n\r\n",
+        )
     }
 }
