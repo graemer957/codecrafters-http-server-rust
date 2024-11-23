@@ -1,4 +1,5 @@
 use crate::{
+    http::Header,
     request::{Method, Request},
     response::{Response, StatusCode},
 };
@@ -10,6 +11,7 @@ pub trait Shutdownable {
     fn shutdown(&self, how: Shutdown) -> std::io::Result<()>;
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Shutdownable for TcpStream {
     fn shutdown(&self, how: Shutdown) -> std::io::Result<()> {
         self.shutdown(how)
@@ -41,6 +43,15 @@ where
 
         let response = match (request.method, request.target.as_str()) {
             (Method::Get, "/") => Response::new(StatusCode::Ok),
+            (Method::Get, target) if target.starts_with("/echo/") => {
+                let mut response = Response::new(StatusCode::Ok);
+                response.add_header(Header::ContentType("text/plain".to_string()));
+                // Safety: Have already checked target starts_with
+                let body = target.strip_prefix("/echo/").unwrap();
+                response.body(body.into());
+
+                response
+            }
             _ => Response::new(StatusCode::NotFound),
         };
         println!("Sending: {response:?}");
@@ -50,6 +61,7 @@ where
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<T> Drop for Connection<T>
 where
     T: Read + Write + Shutdownable,
@@ -108,5 +120,28 @@ mod test {
             b"GET /not_found HTTP/1.1\r\n\r\n",
             b"HTTP/1.1 404 Not Found\r\n\r\n",
         )
+    }
+
+    #[test]
+    fn get_echo_returns_200() -> Result<()> {
+        mock(
+            b"GET /echo/rust HTTP/1.1\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nrust",
+        )
+    }
+
+    #[test]
+    fn method_not_supported_is_unimplemented() {
+        let input = b"POST / HTTP/1.1\r\n\r\n";
+
+        let mut mock = MockConnection::new();
+        mock.expect_read().once().returning(|buf| {
+            buf[..input.len()].copy_from_slice(input);
+            Ok(input.len())
+        });
+        mock.expect_shutdown().once().returning(|_| Ok(()));
+
+        let result = Connection::new(mock).process();
+        assert!(result.is_err());
     }
 }

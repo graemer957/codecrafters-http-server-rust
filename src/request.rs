@@ -79,7 +79,7 @@ mod test {
     #[test]
     fn it_works() -> Result<()> {
         let input = b"GET / HTTP/1.1";
-        let result = Request::decode(&input[..])?;
+        let result = Request::decode(&input[..]).unwrap();
 
         assert_eq!(result.method, Method::Get);
         assert_eq!(result.target, String::from("/"));
