@@ -1,17 +1,21 @@
 use crate::http;
 use anyhow::Result;
-use std::io::BufRead;
+use std::{collections::HashMap, io::BufRead};
 use thiserror::Error;
 
 #[derive(Debug)]
 pub struct Request {
     pub method: Method,
     pub target: String,
+    pub headers: HashMap<String, String>,
 }
 
 impl Request {
     pub fn decode<T: BufRead>(reader: T) -> Result<Self> {
-        let request_line = reader.lines().next().ok_or(Error::MissingRequestLine)??;
+        let mut lines = reader.lines();
+        let Some(Ok(request_line)) = lines.next() else {
+            return Err(Error::MissingRequestLine.into());
+        };
         let mut parts = request_line.split_whitespace();
 
         let method = if let Some(method) = parts.next() {
@@ -30,9 +34,24 @@ impl Request {
             return Err(Error::MissingHTTPVersion.into());
         };
 
+        let mut headers = HashMap::new();
+        while let Some(Ok(header)) = lines.next() {
+            if header.is_empty() {
+                break;
+            }
+
+            let mut split = header.split_terminator(':');
+            match (split.next(), split.next()) {
+                // Technically I think we should return 400 to client if key has any whitespace
+                (Some(k), Some(v)) => headers.insert(k.trim().to_lowercase(), v.trim().to_string()),
+                _ => return Err(Error::InvalidHeader.into()),
+            };
+        }
+
         Ok(Self {
             method,
             target: String::from(request_target),
+            headers,
         })
     }
 }
@@ -61,6 +80,9 @@ pub enum Error {
 
     #[error("Unsupported HTTP Method")]
     UnsupportedMethod,
+
+    #[error("Invalid HTTP header")]
+    InvalidHeader,
 }
 
 impl Method {
@@ -78,11 +100,12 @@ mod test {
 
     #[test]
     fn it_works() -> Result<()> {
-        let input = b"GET / HTTP/1.1";
+        let input = b"GET / HTTP/1.1\r\nUser-Agent: Rust\r\n\r\n";
         let result = Request::decode(&input[..]).unwrap();
 
         assert_eq!(result.method, Method::Get);
         assert_eq!(result.target, String::from("/"));
+        assert_eq!(result.headers.get("user-agent"), Some(&"Rust".to_string()));
 
         Ok(())
     }
@@ -156,6 +179,18 @@ mod test {
         assert_eq!(
             result.unwrap_err().downcast::<Error>().unwrap(),
             Error::UnsupportedMethod
+        );
+    }
+
+    #[test]
+    fn invalid_header() {
+        let input = b"GET / HTTP/1.1\r\nBad Header\r\n\r\n";
+        let result = Request::decode(&input[..]);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().downcast::<Error>().unwrap(),
+            Error::InvalidHeader
         );
     }
 }

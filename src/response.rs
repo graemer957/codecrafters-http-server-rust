@@ -58,6 +58,7 @@ impl Response {
 pub enum StatusCode {
     Ok,
     NotFound,
+    BadRequest,
 }
 
 impl StatusCode {
@@ -65,6 +66,7 @@ impl StatusCode {
         match self {
             Self::Ok => b"200 OK",
             Self::NotFound => b"404 Not Found",
+            Self::BadRequest => b"400 Bad Request",
         }
     }
 }
@@ -77,6 +79,14 @@ mod test {
     fn it_returns_200_ok() {
         let response = Response::new(StatusCode::Ok).encode();
         let expected = b"HTTP/1.1 200 OK\r\n\r\n";
+
+        assert_eq!(response, expected);
+    }
+
+    #[test]
+    fn it_returns_400_bad_request() {
+        let response = Response::new(StatusCode::BadRequest).encode();
+        let expected = b"HTTP/1.1 400 Bad Request\r\n\r\n";
 
         assert_eq!(response, expected);
     }

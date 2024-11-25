@@ -52,6 +52,16 @@ where
 
                 response
             }
+            (Method::Get, "/user-agent") => request.headers.get("user-agent").map_or_else(
+                || Response::new(StatusCode::BadRequest),
+                |user_agent| {
+                    let mut response = Response::new(StatusCode::Ok);
+                    response.add_header(Header::ContentType("text/plain".to_string()));
+                    response.body(user_agent.to_owned().into());
+
+                    response
+                },
+            ),
             _ => Response::new(StatusCode::NotFound),
         };
         println!("Sending: {response:?}");
@@ -143,5 +153,21 @@ mod test {
 
         let result = Connection::new(mock).process();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_user_agent_returns_200() -> Result<()> {
+        mock(
+            b"GET /user-agent HTTP/1.1\r\nUser-Agent: rust\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nrust",
+        )
+    }
+
+    #[test]
+    fn get_user_agent_returns_400() -> Result<()> {
+        mock(
+            b"GET /user-agent HTTP/1.1\r\n\r\n",
+            b"HTTP/1.1 400 Bad Request\r\n\r\n",
+        )
     }
 }
