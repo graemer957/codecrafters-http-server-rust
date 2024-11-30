@@ -4,8 +4,12 @@ use crate::{
     response::{Response, StatusCode},
 };
 use anyhow::Result;
-use std::io::{prelude::*, BufReader};
-use std::net::{Shutdown, TcpStream};
+use std::{
+    fs,
+    io::{prelude::*, BufReader},
+    net::{Shutdown, TcpStream},
+    path::PathBuf,
+};
 
 pub trait Shutdownable {
     fn shutdown(&self, how: Shutdown) -> std::io::Result<()>;
@@ -24,15 +28,16 @@ where
     T: Read + Write + Shutdownable,
 {
     stream: T,
+    directory: Option<String>,
 }
 
 impl<T> Connection<T>
 where
     T: Read + Write + Shutdownable + std::fmt::Debug,
 {
-    pub fn new(stream: T) -> Self {
+    pub fn new(stream: T, directory: Option<String>) -> Self {
         println!("Accepting new connection: {stream:?}");
-        Self { stream }
+        Self { stream, directory }
     }
 
     pub fn process(&mut self) -> Result<()> {
@@ -62,6 +67,27 @@ where
                     response
                 },
             ),
+            (Method::Get, target) if target.starts_with("/files/") => {
+                let mut path_buf = PathBuf::new();
+                if let Some(path) = &self.directory {
+                    path_buf.push(path);
+                };
+                // Safety: Have already checked target starts_with
+                let filename = target.strip_prefix("/files/").unwrap();
+                path_buf.push(filename);
+                fs::read(path_buf).map_or_else(
+                    |_| Response::new(StatusCode::NotFound),
+                    |file_contents| {
+                        let mut response = Response::new(StatusCode::Ok);
+                        response.add_header(Header::ContentType(
+                            "application/octet-stream".to_string(),
+                        ));
+                        response.body(file_contents);
+
+                        response
+                    },
+                )
+            }
             _ => Response::new(StatusCode::NotFound),
         };
         println!("Sending: {response:?}");
@@ -116,7 +142,7 @@ mod test {
             .returning(|buf| Ok(buf.len()));
         mock.expect_shutdown().once().returning(|_| Ok(()));
 
-        Connection::new(mock).process()
+        Connection::new(mock, None).process()
     }
 
     #[test]
@@ -151,7 +177,7 @@ mod test {
         });
         mock.expect_shutdown().once().returning(|_| Ok(()));
 
-        let result = Connection::new(mock).process();
+        let result = Connection::new(mock, None).process();
         assert!(result.is_err());
     }
 
@@ -168,6 +194,22 @@ mod test {
         mock(
             b"GET /user-agent HTTP/1.1\r\n\r\n",
             b"HTTP/1.1 400 Bad Request\r\n\r\n",
+        )
+    }
+
+    #[test]
+    fn get_missing_file_404() -> Result<()> {
+        mock(
+            b"GET /files/random HTTP/1.1\r\n\r\n",
+            b"HTTP/1.1 404 Not Found\r\n\r\n",
+        )
+    }
+
+    #[test]
+    fn get_valid_file_200() -> Result<()> {
+        mock(
+            b"GET /files/.gitattributes HTTP/1.1\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 12\r\n\r\n* text=auto\n",
         )
     }
 }

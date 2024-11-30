@@ -10,6 +10,7 @@ anyhow = "1.0.68"                                # error handling
 bytes = "1.3.0"                                  # helps manage buffers
 thiserror = "1.0.38"                             # error handling
 mockall = "0.13.1"
+clap = { version = "4.5.21", features = ["derive"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
