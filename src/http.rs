@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-pub const VERSION: &str = "HTTP/1.1";
+pub const VERSION: &[u8] = b"HTTP/1.1";
 pub const CRLF: &[u8; 2] = b"\r\n";
 
 #[derive(Debug, Ord, PartialOrd)]

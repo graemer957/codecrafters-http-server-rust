@@ -88,6 +88,17 @@ where
                     },
                 )
             }
+            (Method::Post, target) if target.starts_with("/files") => {
+                let mut path_buf = PathBuf::new();
+                if let Some(path) = &self.directory {
+                    path_buf.push(path);
+                };
+                // Safety: Have already checked target starts_with
+                let filename = target.strip_prefix("/files/").unwrap();
+                path_buf.push(filename);
+                let _ = fs::write(path_buf, request.body.unwrap());
+                Response::new(StatusCode::Created)
+            }
             _ => Response::new(StatusCode::NotFound),
         };
         println!("Sending: {response:?}");
@@ -168,7 +179,7 @@ mod test {
 
     #[test]
     fn method_not_supported_is_unimplemented() {
-        let input = b"POST / HTTP/1.1\r\n\r\n";
+        let input = b"BOOM / HTTP/1.1\r\n\r\n";
 
         let mut mock = MockConnection::new();
         mock.expect_read().once().returning(|buf| {
@@ -199,10 +210,29 @@ mod test {
 
     #[test]
     fn get_missing_file_404() -> Result<()> {
-        mock(
-            b"GET /files/random HTTP/1.1\r\n\r\n",
-            b"HTTP/1.1 404 Not Found\r\n\r\n",
-        )
+        // A lot of effort to cover the case where we need to fill two buffers!
+        // Argubly should be in own test, but given the experimental nature
+        // of this project ;-)
+        let input_1 = b"GET /files/random12345 HTTP/1.1\r";
+        let input_2 = b"\n\r\n";
+        let output: &[u8] = b"HTTP/1.1 404 Not Found\r\n\r\n";
+
+        let mut mock = MockConnection::new();
+        mock.expect_read().once().returning(|buf| {
+            buf[..input_1.len()].copy_from_slice(input_1);
+            Ok(input_1.len())
+        });
+        mock.expect_read().once().returning(|buf| {
+            buf[..input_2.len()].copy_from_slice(input_2);
+            Ok(input_2.len())
+        });
+        mock.expect_write()
+            .with(predicate::eq(output))
+            .once()
+            .returning(|buf| Ok(buf.len()));
+        mock.expect_shutdown().once().returning(|_| Ok(()));
+
+        Connection::new(mock, None).process()
     }
 
     #[test]
@@ -210,6 +240,14 @@ mod test {
         mock(
             b"GET /files/.gitattributes HTTP/1.1\r\n\r\n",
             b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 12\r\n\r\n* text=auto\n",
+        )
+    }
+
+    #[test]
+    fn post_file_201() -> Result<()> {
+        mock(
+            b"POST /files/junk HTTP/1.1\r\nContent-Type: application/octet-stream\r\nContent-Length: 12\r\n\r\nRust",
+            b"HTTP/1.1 201 Created\r\n\r\n",
         )
     }
 }

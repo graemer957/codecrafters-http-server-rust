@@ -8,20 +8,46 @@ pub struct Request {
     pub method: Method,
     pub target: String,
     pub headers: HashMap<String, String>,
+    pub body: Option<Vec<u8>>,
 }
 
 impl Request {
-    pub fn decode<T: BufRead>(reader: T) -> Result<Self> {
-        let mut lines = reader.lines();
-        let Some(Ok(request_line)) = lines.next() else {
-            return Err(Error::MissingRequestLine.into());
-        };
-        let mut parts = request_line.split_whitespace();
+    pub fn decode<T: BufRead>(mut reader: T) -> Result<Self> {
+        let mut bytes_received = Vec::<u8>::new();
 
-        let method = if let Some(method) = parts.next() {
-            Method::decode(method)?
-        } else {
-            return Err(Error::MissingHTTPMethod.into());
+        loop {
+            println!("attempting to read 32 bytes from `reader`");
+            let mut buffer = [0; 32];
+
+            let read = reader.read(&mut buffer)?;
+            if read == 0 {
+                println!("read 0 bytes");
+                break;
+            };
+
+            println!("read {read} bytes");
+            bytes_received.extend_from_slice(&buffer[..read]);
+            if read < buffer.len() {
+                println!("did not fill buffer last loop, exiting...");
+                break;
+            }
+        }
+
+        let mut bytes_received = bytes_received.as_slice();
+        let request_line =
+            if let Some(cr_index) = bytes_received.windows(2).position(|x| x == b"\r\n") {
+                let result = &bytes_received[..cr_index];
+                bytes_received = &bytes_received[cr_index + 2..];
+                result
+            } else {
+                return Err(Error::MissingRequestLine.into());
+            };
+
+        let mut parts = request_line.split(|x| x == &b' ');
+
+        let method = match parts.next() {
+            Some(method) if !method.is_empty() => Method::decode(method)?,
+            _ => return Err(Error::MissingHTTPMethod.into()),
         };
 
         let request_target = parts.next().ok_or(Error::MissingRequestTarget)?;
@@ -34,13 +60,19 @@ impl Request {
             return Err(Error::MissingHTTPVersion.into());
         };
 
-        let mut headers = HashMap::new();
-        while let Some(Ok(header)) = lines.next() {
-            if header.is_empty() {
-                break;
-            }
+        let headers_buf: &[u8] = bytes_received
+            .windows(4)
+            .position(|x| x == b"\r\n\r\n")
+            .map_or(&[], |crcr_index| {
+                let result = &bytes_received[..crcr_index];
+                bytes_received = &bytes_received[crcr_index + 4..];
+                result
+            });
 
-            let mut split = header.split_terminator(':');
+        let mut headers = HashMap::new();
+        let mut lines = headers_buf.lines();
+        while let Some(Ok(header)) = lines.next() {
+            let mut split = header.splitn(2, ':');
             match (split.next(), split.next()) {
                 // Technically I think we should return 400 to client if key has any whitespace
                 (Some(k), Some(v)) => headers.insert(k.trim().to_lowercase(), v.trim().to_string()),
@@ -48,10 +80,17 @@ impl Request {
             };
         }
 
+        let body = if bytes_received.is_empty() {
+            None
+        } else {
+            Some(bytes_received.to_vec())
+        };
+
         Ok(Self {
             method,
-            target: String::from(request_target),
+            target: String::from_utf8(request_target.to_vec())?,
             headers,
+            body,
         })
     }
 }
@@ -59,6 +98,7 @@ impl Request {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Method {
     Get,
+    Post,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -86,9 +126,10 @@ pub enum Error {
 }
 
 impl Method {
-    pub fn decode(data: &str) -> Result<Self> {
+    pub fn decode(data: &[u8]) -> Result<Self> {
         match data {
-            "GET" => Ok(Self::Get),
+            b"GET" => Ok(Self::Get),
+            b"POST" => Ok(Self::Post),
             _ => Err(Error::UnsupportedMethod.into()),
         }
     }
@@ -192,5 +233,18 @@ mod test {
             result.unwrap_err().downcast::<Error>().unwrap(),
             Error::InvalidHeader
         );
+    }
+
+    #[test]
+    fn header_value_with_colon() -> Result<()> {
+        let input = b"GET / HTTP/1.1\r\nHost: localhost:7878\r\n\r\n";
+        let result = Request::decode(&input[..])?;
+
+        assert_eq!(
+            result.headers.get("host"),
+            Some(&"localhost:7878".to_string())
+        );
+
+        Ok(())
     }
 }

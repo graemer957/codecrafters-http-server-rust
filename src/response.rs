@@ -34,7 +34,7 @@ impl Response {
     pub fn encode(self) -> Vec<u8> {
         let mut buf = vec![];
 
-        buf.extend(http::VERSION.as_bytes());
+        buf.extend(http::VERSION);
         buf.extend(b" ");
         buf.extend(self.status_code.as_bytes());
         buf.extend(http::CRLF);
@@ -57,6 +57,7 @@ impl Response {
 #[derive(Debug)]
 pub enum StatusCode {
     Ok,
+    Created,
     NotFound,
     BadRequest,
 }
@@ -65,6 +66,7 @@ impl StatusCode {
     pub const fn as_bytes(&self) -> &[u8] {
         match self {
             Self::Ok => b"200 OK",
+            Self::Created => b"201 Created",
             Self::NotFound => b"404 Not Found",
             Self::BadRequest => b"400 Bad Request",
         }
