@@ -1,5 +1,5 @@
 use crate::{
-    http::Header,
+    http::{Header, SUPPORTED_ENCODINGS},
     request::{Method, Request},
     response::{Response, StatusCode},
 };
@@ -54,7 +54,7 @@ where
                 if let Some(encoding) = request.headers.get("accept-encoding") {
                     // Presumably a real server would need to think about casing (or follow
                     // the RFC assuming it was mentioned in there)
-                    if encoding.contains("gzip") {
+                    if SUPPORTED_ENCODINGS.contains(&&encoding[..]) {
                         response.add_header(Header::ContentEncoding("gzip".to_string()));
                     }
                 }
