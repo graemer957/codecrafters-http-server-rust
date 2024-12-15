@@ -51,6 +51,13 @@ where
             (Method::Get, target) if target.starts_with("/echo/") => {
                 let mut response = Response::new(StatusCode::Ok);
                 response.add_header(Header::ContentType("text/plain".to_string()));
+                if let Some(encoding) = request.headers.get("accept-encoding") {
+                    // Presumably a real server would need to think about casing (or follow
+                    // the RFC assuming it was mentioned in there)
+                    if encoding.contains("gzip") {
+                        response.add_header(Header::ContentEncoding("gzip".to_string()));
+                    }
+                }
                 // Safety: Have already checked target starts_with
                 let body = target.strip_prefix("/echo/").unwrap();
                 response.body(body.into());
@@ -248,6 +255,22 @@ mod test {
         mock(
             b"POST /files/junk HTTP/1.1\r\nContent-Type: application/octet-stream\r\nContent-Length: 12\r\n\r\nRust",
             b"HTTP/1.1 201 Created\r\n\r\n",
+        )
+    }
+
+    #[test]
+    fn echo_with_gzip() -> Result<()> {
+        mock(
+            b"GET /echo/rust HTTP/1.1\r\nAccept-Encoding: gzip\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nrust",
+        )
+    }
+
+    #[test]
+    fn echo_with_unsupported_encoding() -> Result<()> {
+        mock(
+            b"GET /echo/rust HTTP/1.1\r\nAccept-Encoding: br\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nrust",
         )
     }
 }

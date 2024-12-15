@@ -5,6 +5,7 @@ pub const CRLF: &[u8; 2] = b"\r\n";
 
 #[derive(Debug, Ord, PartialOrd)]
 pub enum Header {
+    ContentEncoding(String),
     ContentType(String),
     Custom(String, String),
 }
@@ -12,6 +13,7 @@ pub enum Header {
 impl Header {
     pub fn name(&self) -> &str {
         match self {
+            Self::ContentEncoding(_) => "Content-Encoding",
             Self::ContentType(_) => "Content-Type",
             Self::Custom(name, _) => &name[..],
         }
@@ -19,7 +21,9 @@ impl Header {
 
     pub fn value(&self) -> &str {
         match self {
-            Self::ContentType(value) | Self::Custom(_, value) => value,
+            Self::ContentEncoding(value) | Self::ContentType(value) | Self::Custom(_, value) => {
+                value
+            }
         }
     }
 }
@@ -27,6 +31,7 @@ impl Header {
 impl Hash for Header {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
+            Self::ContentEncoding(_) => 2.hash(state),
             Self::ContentType(_) => 0.hash(state),
             Self::Custom(name, _) => {
                 1.hash(state);
