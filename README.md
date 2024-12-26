@@ -45,6 +45,8 @@ project more elegant / reusable / etc, but do not have the time for right now:
 - [ ] Use of macros for building routes
 - [ ] Builder pattern
 - [ ] Separate framework from functionality for passing CodeCrafters test(s)
-- [ ] Due to adding support for reading body, Request::decode got a little unwieldy. I am tempted to have `new()` read all the bytes from the stream into `bytes_received`, so `Request` can use references.
-- [ ] Do not validate that the body sent is the `content-length` client provided
+- [ ] Due to adding support for reading body, `Request::decode` got a little unwieldy. I am tempted to have `new()` read all the bytes from the stream into `bytes_received`, so `Request` can use references.
+- [ ] Validate that the body sent is the `content-length` client provided
 - [ ] 100% branch coverage (time consuming 😅)
+- [ ] Various improvements to testing - should the CodeCrafters tests be integration? should there be helpers for parsing responses? etc...
+- [ ] Profile performance and fuzz
