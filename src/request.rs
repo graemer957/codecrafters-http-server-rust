@@ -23,7 +23,7 @@ impl Request {
             if read == 0 {
                 println!("read 0 bytes");
                 break;
-            };
+            }
 
             println!("read {read} bytes");
             bytes_received.extend_from_slice(&buffer[..read]);
@@ -58,7 +58,7 @@ impl Request {
             }
         } else {
             return Err(Error::MissingHTTPVersion.into());
-        };
+        }
 
         let headers_buf: &[u8] = bytes_received
             .windows(4)

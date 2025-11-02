@@ -56,7 +56,7 @@ where
                 let gzip = request
                     .headers
                     .get("accept-encoding")
-                    .map_or(false, |encoding|
+                    .is_some_and(|encoding|
                     // Presumably a real server would need to think about casing (or follow
                     // the RFC assuming it was mentioned in there)
                     encoding
@@ -92,7 +92,8 @@ where
                 let mut path_buf = PathBuf::new();
                 if let Some(path) = &self.directory {
                     path_buf.push(path);
-                };
+                }
+
                 // Safety: Have already checked target starts_with
                 let filename = target.strip_prefix("/files/").unwrap();
                 path_buf.push(filename);
@@ -113,7 +114,8 @@ where
                 let mut path_buf = PathBuf::new();
                 if let Some(path) = &self.directory {
                     path_buf.push(path);
-                };
+                }
+
                 // Safety: Have already checked target starts_with
                 let filename = target.strip_prefix("/files/").unwrap();
                 path_buf.push(filename);
