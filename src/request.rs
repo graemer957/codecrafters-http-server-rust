@@ -1,6 +1,9 @@
 use crate::http;
 use anyhow::Result;
-use std::{collections::HashMap, io::BufRead};
+use std::{
+    collections::HashMap,
+    io::{BufRead, ErrorKind},
+};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -12,24 +15,40 @@ pub struct Request {
 }
 
 impl Request {
+    const BUFFER_SIZE: usize = 32;
+
     pub fn decode<T: BufRead>(mut reader: T) -> Result<Self> {
         let mut bytes_received = Vec::<u8>::new();
 
         loop {
-            println!("attempting to read 32 bytes from `reader`");
-            let mut buffer = [0; 32];
+            println!(
+                "attempting to read {} bytes from `reader`",
+                Self::BUFFER_SIZE
+            );
+            let mut buffer = [0; Self::BUFFER_SIZE];
 
-            let read = reader.read(&mut buffer)?;
-            if read == 0 {
-                println!("read 0 bytes");
-                break;
-            }
+            match reader.read(&mut buffer) {
+                Ok(0) => {
+                    println!("read 0 bytes (end of connection?)");
+                    break;
+                }
+                Ok(read) => {
+                    println!("read {read} bytes");
+                    bytes_received.extend_from_slice(&buffer[..read]);
 
-            println!("read {read} bytes");
-            bytes_received.extend_from_slice(&buffer[..read]);
-            if read < buffer.len() {
-                println!("did not fill buffer last loop, exiting...");
-                break;
+                    if read < buffer.len() {
+                        println!("did not fill buffer last loop, exiting...");
+                        break;
+                    }
+                }
+                Err(err)
+                    if err.kind() == ErrorKind::TimedOut || err.kind() == ErrorKind::WouldBlock =>
+                {
+                    return Err(Error::RequestTimeout.into());
+                }
+                Err(err) => {
+                    return Err(err.into());
+                }
             }
         }
 
@@ -123,6 +142,9 @@ pub enum Error {
 
     #[error("Invalid HTTP header")]
     InvalidHeader,
+
+    #[error("Request timeout: did not send data in timely fashion")]
+    RequestTimeout,
 }
 
 impl Method {

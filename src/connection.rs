@@ -1,6 +1,6 @@
 use crate::{
     http::{Header, SUPPORTED_ENCODINGS},
-    request::{Method, Request},
+    request::{Error as RequestError, Method, Request},
     response::{Response, StatusCode},
 };
 use anyhow::Result;
@@ -44,7 +44,27 @@ where
     pub fn process(&mut self) -> Result<()> {
         let buf_reader = BufReader::new(&mut self.stream);
 
-        let request = Request::decode(buf_reader)?;
+        let request = match Request::decode(buf_reader) {
+            Ok(req) => req,
+            Err(e) => {
+                let status_code =
+                    e.downcast_ref::<RequestError>()
+                        .map_or(StatusCode::BadRequest, |req_err| match req_err {
+                            RequestError::RequestTimeout => StatusCode::RequestTimeout,
+                            RequestError::UnsupportedHTTPVersion => {
+                                StatusCode::HttpVersionNotSupported
+                            }
+                            RequestError::UnsupportedMethod => StatusCode::NotImplemented,
+                            _ => StatusCode::BadRequest,
+                        });
+
+                let mut response = Response::new(status_code);
+                response.add_header(Header::ContentType("text/plain".to_string()));
+                response.body(format!("Error: {e}").into_bytes());
+                self.stream.write_all(&response.encode())?;
+                return Ok(());
+            }
+        };
         println!("Received: {request:?}");
 
         let response = match (request.method, request.target.as_str()) {

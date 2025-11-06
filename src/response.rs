@@ -58,8 +58,11 @@ impl Response {
 pub enum StatusCode {
     Ok,
     Created,
-    NotFound,
     BadRequest,
+    NotFound,
+    RequestTimeout,
+    NotImplemented,
+    HttpVersionNotSupported,
 }
 
 impl StatusCode {
@@ -67,8 +70,11 @@ impl StatusCode {
         match self {
             Self::Ok => b"200 OK",
             Self::Created => b"201 Created",
-            Self::NotFound => b"404 Not Found",
             Self::BadRequest => b"400 Bad Request",
+            Self::NotFound => b"404 Not Found",
+            Self::RequestTimeout => b"408 Request Timeout",
+            Self::NotImplemented => b"501 Not Implemented",
+            Self::HttpVersionNotSupported => b"505 HTTP Version Not Supported",
         }
     }
 }

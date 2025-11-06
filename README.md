@@ -50,3 +50,5 @@ project more elegant / reusable / etc, but do not have the time for right now:
 - [ ] 100% branch coverage (time consuming 😅)
 - [ ] Various improvements to testing - should the CodeCrafters tests be integration? should there be helpers for parsing responses? etc...
 - [ ] Profile performance and fuzz
+- [ ] Reimplement using a streaming approach (vs read-then-parse of today). I intentionally avoided to KISS (Keep It Simple Silly) and make forward progress.
+- [ ] Protection from clients that drip-feed bytes (see `main.rs` > `RECEIVE_TIMEOUT`)

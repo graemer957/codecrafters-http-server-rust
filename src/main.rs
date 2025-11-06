@@ -3,7 +3,7 @@
 use anyhow::Result;
 use clap::Parser;
 use connection::Connection;
-use std::net::TcpListener;
+use std::{net::TcpListener, time::Duration};
 use threadpool::ThreadPool;
 
 mod connection;
@@ -18,6 +18,11 @@ struct Args {
     directory: Option<String>,
 }
 
+// Only wait a maximum of 5 seconds for data for the client
+// This mitegates clients that connect and do nothing, but does nothing for clients that
+// drip feel (added into README > TODO)
+const RECEIVE_TIMEOUT: u64 = 5;
+
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -28,9 +33,12 @@ fn main() -> Result<()> {
 
     loop {
         let (stream, _) = listener.accept()?;
+        stream.set_read_timeout(Some(Duration::from_secs(RECEIVE_TIMEOUT)))?;
         let mut connection = Connection::new(stream, args.directory.clone());
         pool.execute(move || {
-            let _ = connection.process();
+            if let Err(err) = connection.process() {
+                eprintln!("Connection error: {err}");
+            }
         });
     }
 }
